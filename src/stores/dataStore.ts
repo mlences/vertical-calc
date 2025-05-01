@@ -16,7 +16,7 @@ export const useVideoStore = defineStore('video', () => {
   })
 
   // Actions
-  const setVideoSource = (source: string) => {
+  const setVideoSource = (source: string | null) => {
     if (videoSource.value) {
       URL.revokeObjectURL(videoSource.value) // Uvoľníme predchádzajúci zdroj
     }
@@ -32,12 +32,20 @@ export const useVideoStore = defineStore('video', () => {
     currentTime.value = time
   }
 
+  const clearVideo = () => {
+    if (videoSource.value) {
+      URL.revokeObjectURL(videoSource.value)
+    }
+    videoSource.value = null
+  }
+
   return {
     // State
     videoSource,
     isPlaying,
     currentTime,
     duration,
+    clearVideo,
     
     // Getters
     progress,

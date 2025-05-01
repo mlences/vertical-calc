@@ -6,7 +6,7 @@
         {{ menu.name }}
         <div v-if="activeMenu === menu.name" class="dropdown">
           <div v-for="item in menu.items" :key="item" class="dropdown-item" @click="handleMenuAction(menu.name, item)"
-            :class="{ disabled: item === 'Close' && !hasVideo }">
+            :class="{ disabled: item === 'Close' && !hasVideoSource }">
             <div class="file-input-container" v-if="item === 'Open'">
               <input ref="fileInput" type="file" accept="video/*" style="display: none" @change="handleFileChange" />
               Open
@@ -21,10 +21,12 @@
   </div>
 </template>
 
+
 <script setup>
 import { ref, computed } from 'vue'
 import { useVideoStore } from '@/stores/dataStore'
 import { storeToRefs } from 'pinia'
+import { watch } from 'vue'
 
 const videoStore = useVideoStore()
 const { videoSource } = storeToRefs(videoStore)
@@ -53,16 +55,16 @@ const closeDropdown = () => {
 }
 
 const handleMenuAction = (menuName, item) => {
-  if (item === 'Close' && !props.hasVideo) return
-
+  if (item === 'Close' && !hasVideoSource.value) return
+  
   if (menuName === "File") {
     if (item === "Open") {
       fileInput.value[0].click()
+    } else if (item === "Close") {
+      // CORRECT: Call clearVideo on the store instance
+      videoStore.clearVideo()
     } else if (item === "Exit") {
       // window.close()
-    } else if (item === "Close") {
-      videoStore.setVideoSource(null) // Uložíme do Pinia store
-      URL.revokeObjectURL(videoSource.value)
     }
   }
 }
@@ -70,8 +72,12 @@ const handleMenuAction = (menuName, item) => {
 const handleFileChange = (event) => {
   const file = event.target.files[0]
   if (file) {
-    const videoSource = URL.createObjectURL(file)
-    videoStore.setVideoSource(videoSource) // Uložíme do Pinia store
+    try {
+      const source = URL.createObjectURL(file)
+      videoStore.setVideoSource(source)
+    } catch (error) {
+      console.error('Error creating object URL:', error)
+    }
   }
 }
 </script>
