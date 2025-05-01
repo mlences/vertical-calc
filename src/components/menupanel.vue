@@ -71,13 +71,20 @@ const handleMenuAction = (menuName, item) => {
 
 const handleFileChange = (event) => {
   const file = event.target.files[0]
-  if (file) {
-    try {
-      const source = URL.createObjectURL(file)
-      videoStore.setVideoSource(source)
-    } catch (error) {
-      console.error('Error creating object URL:', error)
-    }
+  if (!file) return
+
+  // Verify video file type
+  if (!file.type.startsWith('video/')) {
+    alert('Please select a valid video file')
+    return
+  }
+
+  try {
+    const source = URL.createObjectURL(file)
+    videoStore.setVideoSource(source)
+  } catch (error) {
+    console.error('Error loading video:', error)
+    alert('Error loading video file')
   }
 }
 </script>

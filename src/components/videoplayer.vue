@@ -1,8 +1,17 @@
 <template>
   <div class="video-player-container">
     <div class="video-container">
-      <video ref="videoElement" v-if="videoSource" :src="videoSource" muted></video>
+    <video
+      ref="videoPlayer"
+      v-if="videoStore.videoSource"
+      :src="videoStore.videoSource"
+      @play="handlePlay"
+      @pause="handlePause"
+    ></video>
+    <div v-else class="no-video">
+      No video loaded
     </div>
+  </div>
 
     <div class="controls">
       <button @click="togglePlay">
@@ -60,23 +69,50 @@ const frameRate = ref(30) // Make sure this is defined
 const isDragging = ref(false)
 const animationFrameId = ref(null)
 
-// Computed
-const progressPercentage = computed(() => {
-  return duration.value > 0 ? (currentTime.value / duration.value) * 100 : 0
+const setFrameMarkers = () => {
+  videoStore.setMarkers(
+    selectedTakeoffFrame.value,
+    selectedPeakFrame.value,
+    selectedLandingFrame.value
+  )
+}
+
+// Computed properties for marker positions
+const takeoffPercentage = computed(() => {
+  return videoStore.takeoffTime / videoStore.duration * 100
 })
 
-const markInPercentage = computed(() => {
-  return markInTime.value !== null ? (markInTime.value / duration.value) * 100 : 0
+const peakPercentage = computed(() => {
+  return videoStore.peakTime / videoStore.duration * 100
 })
 
-const markOutPercentage = computed(() => {
-  return markOutTime.value !== null ? (markOutTime.value / duration.value) * 100 : 0
+const landingPercentage = computed(() => {
+  return videoStore.landingTime / videoStore.duration * 100
 })
 
 const frameDuration = computed(() => {
   return 1 / frameRate.value // Now frameRate is properly defined
 })
 
+const handleTimelineClick = (event) => {
+  if (!videoPlayer.value) return
+  
+  const timeline = event.currentTarget
+  const rect = timeline.getBoundingClientRect()
+  const position = (event.clientX - rect.left) / rect.width
+  videoPlayer.value.currentTime = position * videoPlayer.value.duration
+}
+
+// Helper to estimate frame rate
+const getFrameRate = () => {
+  try {
+    const stream = videoPlayer.value.captureStream()
+    const track = stream.getVideoTracks()[0]
+    return track.getSettings().frameRate || 30
+  } catch {
+    return 30
+  }
+}
 // Methods
 const initVideo = () => {
   if (videoPlayer.value) {
@@ -211,11 +247,10 @@ const handleFileChange = (event) => {
 }
 
 
-
-// Register player with store
 onMounted(() => {
-  if (videoElement.value) {
-    videoStore.registerPlayer(videoElement.value)
+
+  if (videoPlayer.value && videoStore.videoSource) {
+    videoPlayer.value.load()
   }
 })
 
