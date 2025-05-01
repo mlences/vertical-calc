@@ -8,9 +8,12 @@
           <div v-for="item in menu.items" :key="item" class="dropdown-item" @click="handleMenuAction(menu.name, item)"
             :class="{ disabled: item === 'Close' && !hasVideo }">
             <div class="file-input-container" v-if="item === 'Open'">
-              <input ref="videoInput" type="file" accept="video/*" style="display: none" @change="handleFileChange" />
+              <input ref="fileInput" type="file" accept="video/*" style="display: none" @change="handleFileChange" />
+              Open
             </div>
-            {{ item }}
+            <template v-else>
+              {{ item }}
+            </template>
           </div>
         </div>
       </div>
@@ -18,70 +21,59 @@
   </div>
 </template>
 
-<script>
+<script setup>
+import { ref, computed } from 'vue'
+import { useVideoStore } from '@/stores/dataStore'
+import { storeToRefs } from 'pinia'
 
-export default {
-  name: 'MenuPanel',
-  props: {
-    hasVideo: {
-      type: Boolean,
-      default: false
+const videoStore = useVideoStore()
+const { videoSource } = storeToRefs(videoStore)
+const fileInput = ref(null)
+const activeMenu = ref(null)
+
+// Computed property to check if video source exists
+const hasVideoSource = computed(() => !!videoSource.value)
+
+const menus = ref([
+  { name: "File", items: ["Open", "Close", "Exit"] },
+  { name: "Marks", items: ["Start", "End", "Reset"] },
+  { name: "View", items: ["Zoom", "Fullscreen", "Dark Mode"] },
+  { name: "Help", items: ["Documentation", "About"] },
+])
+
+const hasVideo = useVideoStore().videoSource !== null
+
+// Methods
+const openDropdown = (menuName) => {
+  activeMenu.value = menuName
+}
+
+const closeDropdown = () => {
+  activeMenu.value = null
+}
+
+const handleMenuAction = (menuName, item) => {
+  if (item === 'Close' && !props.hasVideo) return
+
+  if (menuName === "File") {
+    if (item === "Open") {
+      fileInput.value[0].click()
+    } else if (item === "Exit") {
+      // window.close()
+    } else if (item === "Close") {
+      videoStore.setVideoSource(null) // Uložíme do Pinia store
+      URL.revokeObjectURL(videoSource.value)
     }
-  },
-  data() {
-    return {
-      activeMenu: null,
-      menus: [
-        { name: "File", items: ["Open", "Close", "Exit"] },
-        { name: "Marks", items: ["Start", "End", "Reset"] },
-        { name: "View", items: ["Zoom", "Fullscreen", "Dark Mode"] },
-        { name: "Help", items: ["Documentation", "About"] },
-      ],
-    };
-  },
-  methods: {
-    openDropdown(menuName) {
-      this.activeMenu = menuName;
-    },
-    closeDropdown() {
-      this.activeMenu = null;
-    },
-    openFileDialog() {
-      this.$refs.videoInput.click()
-    },
-    handleMenuAction(menuName, item) {
-      if (menuName === "File" && item === "Open") {
-        console.log('Open video file dialog');
-        const fileInput = this.$el.querySelector('.file-input');
-        fileInput.click();
-        fileInput.addEventListener('change', (event) => {
-          const file = event.target.files[0];
-          if (file) {
-            const videoSource = URL.createObjectURL(file);
-            console.log('Selected video source:', videoSource);
-            this.$emit('video-source-changed', videoSource); // Emitovanie eventu s video source
-          }
-        });
-      }
-    },
-    handleFileChange(event) {
-      const file = event.target.files[0]
-      if (file) {
-        if (this.videoSource) {
-          URL.revokeObjectURL(this.videoSource)
-        }
-        this.videoSource = URL.createObjectURL(file)
-        console.log('Selected video source:', videoSource);
-        this.$emit('video-source-changed', videoSource); // Emitovanie eventu s video source
-      }
-    },
-
-  },
-  mounted() {
-    console.log('MenuPanel - Typ videoSource:', typeof this.videoSource);
-    console.log('VideoPlayer - Typ videoSource:', typeof this.videoSource);
   }
-};
+}
+
+const handleFileChange = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    const videoSource = URL.createObjectURL(file)
+    videoStore.setVideoSource(videoSource) // Uložíme do Pinia store
+  }
+}
 </script>
 
 <style scoped>

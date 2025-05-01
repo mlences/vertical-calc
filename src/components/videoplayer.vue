@@ -59,181 +59,189 @@
           <div class="timeline-cursor" :style="{ left: progressPercentage + '%' }"></div>
         </div>
       </div>
-  
-      <div class="file-input-container">
-        <label class="file-input-label">
-          Select Video
-          <input type="file" accept="video/*" @change="handleFileChange" class="file-input" />
-        </label>
-      </div>
     </div>
   </template>
   
-  <script>
-  export default {
-    name: 'videoPlayer',
-    data() {
-      return {
-        videoSource: this.videoSource,
-        isPlaying: false,
-        currentTime: 0,
-        duration: 0,
-        markInTime: null,
-        markOutTime: null,
-        durationDifference: null,
-        frameRate: 30,
-        isDragging: false,
-        animationFrameId: null
-      }
-    },
-    computed: {
-      progressPercentage() {
-        return (this.currentTime / this.duration) * 100
-      },
-      markInPercentage() {
-        return this.markInTime !== null ? (this.markInTime / this.duration) * 100 : 0
-      },
-      markOutPercentage() {
-        return this.markOutTime !== null ? (this.markOutTime / this.duration) * 100 : 0
-      },
-      frameDuration() {
-        return 1 / this.frameRate
-      }
-    },
-   methods: {
-     handleFileChange(event) {
-       const file = event.target.files[0]
-       if (file) {
-         if (this.videoSource) {
-           URL.revokeObjectURL(this.videoSource)
-         }
-         this.videoSource = URL.createObjectURL(file)
-         this.resetMarks()
-         this.$emit('video-source-changed', this.videoSource) // Emitovanie eventu s novým videoSource
-       }
-     },
-     initVideo() {
-       const video = this.$refs.videoPlayer
-       this.duration = video.duration
-  
-       try {
-         const videoTrack = video.captureStream().getVideoTracks()[0]
-         const settings = videoTrack.getSettings()
-         this.frameRate = settings.frameRate || 30
-       } catch {
-         this.frameRate = 30
-       }
-     },
-     togglePlay() {
-       const video = this.$refs.videoPlayer
-       if (this.isPlaying) {
-         video.pause()
-         cancelAnimationFrame(this.animationFrameId)
-       } else {
-         video.play()
-         this.startAnimation()
-       }
-       this.isPlaying = !this.isPlaying
-     },
-     startAnimation() {
-       const video = this.$refs.videoPlayer
-       const update = () => {
-         this.currentTime = video.currentTime
-         this.animationFrameId = requestAnimationFrame(update)
-       }
-       this.animationFrameId = requestAnimationFrame(update)
-     },
-     updateTimeline() {
-       if (!this.isDragging) {
-         this.currentTime = this.$refs.videoPlayer.currentTime
-       }
-     },
-     startDrag(e) {
-       this.isDragging = true
-       this.seekToPosition(e)
-     },
-     handleDrag(e) {
-       if (this.isDragging) {
-         this.seekToPosition(e)
-       }
-     },
-     endDrag() {
-       this.isDragging = false
-     },
-     seekToPosition(event) {
-       const timeline = this.$refs.timeline
-       const rect = timeline.getBoundingClientRect()
-       let position = (event.clientX - rect.left) / rect.width
-       position = Math.max(0, Math.min(1, position))
-        
-       const video = this.$refs.videoPlayer
-       video.currentTime = position * this.duration
-       this.currentTime = video.currentTime
-     },
-     setMarkIn() {
-       this.markInTime = this.currentTime
-       this.calculateDuration()
-     },
-     setMarkOut() {
-       this.markOutTime = this.currentTime
-       this.calculateDuration()
-     },
-     resetMarks() {
-       this.markInTime = null
-       this.markOutTime = null
-       this.durationDifference = null
-     },
-     calculateDuration() {
-       if (this.markInTime !== null && this.markOutTime !== null) {
-         this.durationDifference = Math.abs(this.markOutTime - this.markInTime)
-       }
-     },
-     formatTime(seconds, showFrames = false) {
-       if (seconds === null || isNaN(seconds)) return '00:00:00'
-        
-       const date = new Date(0)
-       date.setSeconds(seconds)
-       const timeString = date.toISOString().substr(11, 8)
-  
-       if (showFrames) {
-         const frames = Math.floor((seconds % 1) * this.frameRate)
-         return `${timeString}.${frames.toString().padStart(2, '0')}`
-       }
-       return timeString
-     },
-     stepForward() {
-       const video = this.$refs.videoPlayer
-       video.pause()
-       this.isPlaying = false
-       cancelAnimationFrame(this.animationFrameId)
-       video.currentTime = Math.min(video.duration, video.currentTime + this.frameDuration)
-       this.currentTime = video.currentTime
-     },
-     stepBackward() {
-       const video = this.$refs.videoPlayer
-       video.pause()
-       this.isPlaying = false
-       cancelAnimationFrame(this.animationFrameId)
-       video.currentTime = Math.max(0, video.currentTime - this.frameDuration)
-       this.currentTime = video.currentTime
-     },
-     handleScroll(e) {
-       const video = this.$refs.videoPlayer
-       const delta = e.deltaY > 0 ? 1 : -1
-       video.currentTime = Math.max(0, Math.min(video.duration,
-         video.currentTime + (delta * this.frameDuration)
-       ));
-       this.currentTime = video.currentTime;
-     }
-   },
-    beforeDestroy() {
-      cancelAnimationFrame(this.animationFrameId)
-      if (this.videoSource) {
-        URL.revokeObjectURL(this.videoSource)
-      }
-    },
+  <script setup>
+import { ref, computed, onBeforeUnmount } from 'vue'
+import { useVideoStore } from '@/stores/dataStore'
+import { storeToRefs } from 'pinia'
+
+// Store
+const videoStore = useVideoStore()
+const { videoSource } = storeToRefs(videoStore)
+
+// Refs
+const videoPlayer = ref(null)
+const timelineContainer = ref(null)
+const timeline = ref(null)
+const isPlaying = ref(false)
+const currentTime = ref(0)
+const duration = ref(0)
+const markInTime = ref(null)
+const markOutTime = ref(null)
+const durationDifference = ref(null)
+const frameRate = ref(30) // Make sure this is defined
+const isDragging = ref(false)
+const animationFrameId = ref(null)
+
+// Computed
+const progressPercentage = computed(() => {
+  return duration.value > 0 ? (currentTime.value / duration.value) * 100 : 0
+})
+
+const markInPercentage = computed(() => {
+  return markInTime.value !== null ? (markInTime.value / duration.value) * 100 : 0
+})
+
+const markOutPercentage = computed(() => {
+  return markOutTime.value !== null ? (markOutTime.value / duration.value) * 100 : 0
+})
+
+const frameDuration = computed(() => {
+  return 1 / frameRate.value // Now frameRate is properly defined
+})
+
+// Methods
+const initVideo = () => {
+  if (videoPlayer.value) {
+    duration.value = videoPlayer.value.duration
+    try {
+      const videoTrack = videoPlayer.value.captureStream().getVideoTracks()[0]
+      const settings = videoTrack.getSettings()
+      frameRate.value = settings.frameRate || 30
+    } catch {
+      frameRate.value = 30
+    }
   }
-  </script>
+}
+
+const formatTime = (seconds, showFrames = false) => {
+  if (seconds === null || isNaN(seconds)) return '00:00:00'
+  
+  const date = new Date(0)
+  date.setSeconds(seconds)
+  const timeString = date.toISOString().substr(11, 8)
+
+  if (showFrames) {
+    const frames = Math.floor((seconds % 1) * frameRate.value) // Now using frameRate.value
+    return `${timeString}.${frames.toString().padStart(2, '0')}`
+  }
+  return timeString
+}
+
+const togglePlay = () => {
+  if (isPlaying.value) {
+    videoPlayer.value.pause()
+    cancelAnimationFrame(animationFrameId.value)
+  } else {
+    videoPlayer.value.play()
+    startAnimation()
+  }
+  isPlaying.value = !isPlaying.value
+}
+
+const startAnimation = () => {
+  const update = () => {
+    currentTime.value = videoPlayer.value.currentTime
+    animationFrameId.value = requestAnimationFrame(update)
+  }
+  animationFrameId.value = requestAnimationFrame(update)
+}
+
+const updateTimeline = () => {
+  if (!isDragging.value) {
+    currentTime.value = videoPlayer.value.currentTime
+  }
+}
+
+const startDrag = (e) => {
+  isDragging.value = true
+  seekToPosition(e)
+}
+
+const handleDrag = (e) => {
+  if (isDragging.value) {
+    seekToPosition(e)
+  }
+}
+
+const endDrag = () => {
+  isDragging.value = false
+}
+
+const seekToPosition = (event) => {
+  const rect = timeline.value.getBoundingClientRect()
+  let position = (event.clientX - rect.left) / rect.width
+  position = Math.max(0, Math.min(1, position))
+  
+  videoPlayer.value.currentTime = position * duration.value
+  currentTime.value = videoPlayer.value.currentTime
+}
+
+const setMarkIn = () => {
+  markInTime.value = currentTime.value
+  calculateDuration()
+}
+
+const setMarkOut = () => {
+  markOutTime.value = currentTime.value
+  calculateDuration()
+}
+
+const resetMarks = () => {
+  markInTime.value = null
+  markOutTime.value = null
+  durationDifference.value = null
+}
+
+const calculateDuration = () => {
+  if (markInTime.value !== null && markOutTime.value !== null) {
+    durationDifference.value = Math.abs(markOutTime.value - markInTime.value)
+  }
+}
+
+
+const stepForward = () => {
+  videoPlayer.value.pause()
+  isPlaying.value = false
+  cancelAnimationFrame(animationFrameId.value)
+  videoPlayer.value.currentTime = Math.min(duration.value, videoPlayer.value.currentTime + frameDuration.value)
+  currentTime.value = videoPlayer.value.currentTime
+}
+
+const stepBackward = () => {
+  videoPlayer.value.pause()
+  isPlaying.value = false
+  cancelAnimationFrame(animationFrameId.value)
+  videoPlayer.value.currentTime = Math.max(0, videoPlayer.value.currentTime - frameDuration.value)
+  currentTime.value = videoPlayer.value.currentTime
+}
+
+const handleScroll = (e) => {
+  const delta = e.deltaY > 0 ? 1 : -1
+  videoPlayer.value.currentTime = Math.max(0, Math.min(duration.value,
+    videoPlayer.value.currentTime + (delta * frameDuration.value)
+  ))
+  currentTime.value = videoPlayer.value.currentTime
+}
+
+const handleFileChange = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    const source = URL.createObjectURL(file)
+    videoStore.setVideoSource(source)
+    resetMarks()
+  }
+}
+
+// Cleanup
+onBeforeUnmount(() => {
+  if (animationFrameId.value) {
+    cancelAnimationFrame(animationFrameId.value)
+  }
+})
+</script>
   
   <style scoped>
   .video-player-container {

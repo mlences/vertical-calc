@@ -11,7 +11,7 @@
 <script>
 import MenuPanel from './components/menupanel.vue';
 import VideoPlayer from './components/videoplayer.vue';
-var videoSource = null; // Premenná pre video source
+import { defineStore } from 'pinia'
 
 import { defineComponent } from 'vue';
 
@@ -27,7 +27,8 @@ export default defineComponent({
     },
     methods: {
         handleData(video) { // Emitovanie eventu s dátami
-            videoSource = video; // Uloženie dát do premennej
+            this.videoSource = video
+            console.log(this.videoSource); // Uloženie dát do premennej
         }
     },
 });
