@@ -59,6 +59,10 @@ export const useVideoStore = defineStore('video', () => {
     }
   }
 
+  const frameStep = computed(() => {
+    return frameRate.value > 0 ? Math.floor(duration.value * frameRate.value) : 0
+  })
+
   const setPlaying = (playing: boolean) => {
     isPlaying.value = playing
   }
@@ -113,6 +117,7 @@ export const useVideoStore = defineStore('video', () => {
   return {
     // video State
     videoSource,
+    frameStep,
     isPlaying,
     currentTime,
     duration,

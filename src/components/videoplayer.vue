@@ -8,8 +8,9 @@
         :src="videoStore.videoSource"
         @timeupdate="handleTimeUpdate"
         @loadedmetadata="handleLoadedMetadata"
-        @play="videoStore.setPlaying(true)"
-        @pause="videoStore.setPlaying(false)"
+        @play="handlePlay"
+        @pause="handlePause"
+        @ended="handleVideoEnd"
         muted
       ></video>
       <div v-else class="no-video">
@@ -20,7 +21,7 @@
     <!-- Controls -->
     <div class="controls">
       <button @click="togglePlay">
-        {{ videoStore.isPlaying ? 'Pause' : 'Play' }}
+        {{ showReplay ? 'Replay' : videoStore.isPlaying ? 'Pause' : 'Play' }}
       </button>
       <button @click="setMarker('takeoff')">Mark Takeoff</button>
       <button @click="setMarker('landing')">Mark Landing</button>
@@ -28,10 +29,6 @@
       
       <span class="time-display">
         {{ formatTime(videoStore.currentTime) }} / {{ formatTime(videoStore.duration) }}
-        <br>
-        {{ videoStore.frameRate }} FPS
-        <br>
-        {{ videoStore.frameDuration }} ms/frame
       </span>
     </div>
 
@@ -45,9 +42,8 @@
         @mouseup="endDrag"
         @mouseleave="endDrag"
         @click="handleTimelineClick"
-        @wheel="handleScroll"
+        @wheel.prevent="handleScroll"
       >
-        
         <!-- Markers -->
         <div 
           v-if="videoStore.takeoffTime !== null" 
@@ -67,15 +63,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useVideoStore } from '@/stores/dataStore'
 
-const animationRef = ref(null)
 const videoStore = useVideoStore()
 const videoPlayer = ref(null)
-const isPlaying = ref(false)
 const timeline = ref(null)
-const timelineCursor = ref(null)
+const isDragging = ref(false)
+const wasPlayingBeforeDrag = ref(false)
+const animationRef = ref(null)
+const showReplay = ref(false)
 
 const initVideo = () => {
   if (videoPlayer.value) {
@@ -86,44 +83,43 @@ const initVideo = () => {
 }
 
 const togglePlay = async () => {
-  if (!videoPlayer.value) {
-    console.warn('Video nie je pripravené na prehrávanie')
-    return
-  }
+  if (!videoPlayer.value) return
 
   try {
-    if (isPlaying.value) {
+    if (showReplay.value) {
+      // Handle replay case
+      videoPlayer.value.currentTime = 0
+      await videoPlayer.value.play()
+      showReplay.value = false
+      videoStore.setPlaying(true)
+      animationRef.value = requestAnimationFrame(updateFrame)
+      return
+    }
+
+    if (videoStore.isPlaying) {
       await videoPlayer.value.pause()
       cancelAnimationFrame(animationRef.value)
     } else {
       await videoPlayer.value.play()
       animationRef.value = requestAnimationFrame(updateFrame)
     }
-    isPlaying.value = !isPlaying.value
-    videoStore.isPlaying = isPlaying.value
+    videoStore.setPlaying(!videoStore.isPlaying)
   } catch (error) {
-    console.error('Chyba pri prehrávaní:', error)
+    console.error('Playback error:', error)
   }
 }
-// Event Handlers
-const seekToPosition = (clientX) => {
-  if (!videoPlayer.value || !timeline.value) return
+
+const seekToPosition = (position) => {
+  if (!videoPlayer.value || !videoStore.duration) return
   
-  const rect = timeline.value.getBoundingClientRect()
-  let pos = (clientX - rect.left) / rect.width
-  pos = Math.max(0, Math.min(1, pos))
-  
-  const frameTime = videoStore.frameDuration
-  const exactTime = Math.round(pos * videoPlayer.value.duration / frameTime) * frameTime
-  
-  videoPlayer.value.currentTime = exactTime
-  videoStore.currentTime = exactTime
+  const newTime = Math.min(Math.max(position * videoStore.duration, 0), videoStore.duration)
+  videoPlayer.value.currentTime = newTime
+  videoStore.currentTime = newTime
 }
 
-
 const handleTimeUpdate = () => {
-  if (!videoStore.isDragging && !videoStore.isScrubbing) {
-    videoStore.updateCurrentTime(videoPlayer.value.currentTime)
+  if (!isDragging.value) {
+    videoStore.currentTime = videoPlayer.value.currentTime
   }
 }
 
@@ -133,6 +129,7 @@ const handleLoadedMetadata = () => {
       duration: videoPlayer.value.duration,
       frameRate: getFrameRate()
     })
+    showReplay.value = false
   }
 }
 
@@ -140,17 +137,8 @@ const updateFrame = () => {
   if (!videoPlayer.value || videoPlayer.value.paused || videoPlayer.value.ended) {
     return
   }
-
-  const currentTime = videoPlayer.value.currentTime
-  const duration = videoPlayer.value.duration
-
-  videoStore.currentTime = currentTime
-
-  if (timelineCursor.value) {
-    const percentage = (currentTime / duration) * 100
-    timelineCursor.value.style.left = `${percentage}%`
-  }
-
+  
+  videoStore.currentTime = videoPlayer.value.currentTime
   animationRef.value = requestAnimationFrame(updateFrame)
 }
 
@@ -160,58 +148,102 @@ const setMarker = (type) => {
   }
 }
 
-// Timeline Interaction
-const startDrag = (e) => {
-  videoStore.isDragging = true
-  seekToPosition(e.clientX)
+const handlePlay = () => {
+  videoStore.setPlaying(true)
+  showReplay.value = false
 }
 
-const handleDrag = (e) => {
-  if (videoStore.isDragging) {
-    const rect = timeline.value.getBoundingClientRect()
-    const pos = (e.clientX - rect.left) / rect.width
-    const exactFrame = Math.round(pos * videoStore.duration / videoStore.frameStep)
-    videoPlayer.value.currentTime = exactFrame * videoStore.frameStep
-    videoStore.currentTime = videoPlayer.value.currentTime
+const handlePause = () => {
+  videoStore.setPlaying(false)
+}
+
+const handleVideoEnd = () => {
+  videoStore.setPlaying(false)
+  showReplay.value = true
+}
+
+// Timeline Interaction
+const startDrag = (e) => {
+  wasPlayingBeforeDrag.value = videoStore.isPlaying
+  if (wasPlayingBeforeDrag.value) {
+    videoPlayer.value.pause()
+    videoStore.setPlaying(false)
+    cancelAnimationFrame(animationRef.value)
   }
+  isDragging.value = true
+  handleDrag(e)
 }
 
 const endDrag = () => {
-  videoStore.isDragging = false
+  if (isDragging.value && wasPlayingBeforeDrag.value) {
+    videoPlayer.value.play()
+    videoStore.setPlaying(true)
+    animationRef.value = requestAnimationFrame(updateFrame)
+  }
+  isDragging.value = false
+}
+
+const handleDrag = (e) => {
+  if (!isDragging.value || !timeline.value || !videoPlayer.value) return
+  
+  const rect = timeline.value.getBoundingClientRect()
+  const pos = (e.clientX - rect.left) / rect.width
+  const newTime = Math.min(Math.max(pos * videoStore.duration, 0), videoStore.duration)
+  
+  // Immediate update without waiting for timeupdate
+  videoPlayer.value.currentTime = newTime
+  videoStore.currentTime = newTime
 }
 
 const handleTimelineClick = (e) => {
-  seekToPosition(e.clientX)
+  if (!isDragging.value) {
+    const rect = timeline.value.getBoundingClientRect()
+    const pos = (e.clientX - rect.left) / rect.width
+    seekToPosition(pos)
+    showReplay.value = false
+  }
 }
 
 const handleScroll = (e) => {
-  if (!videoPlayer.value) return
+  if (!videoPlayer.value || !videoStore.duration) return
   
-  // Zablokuj default scroll správanie
-  e.preventDefault()
+  // Pause during scroll for immediate feedback
+  const wasPlaying = videoStore.isPlaying
+  if (wasPlaying) {
+    videoPlayer.value.pause()
+    videoStore.setPlaying(false)
+    cancelAnimationFrame(animationRef.value)
+  }
   
-  // Vypočítaj nový čas
-  const delta = -Math.sign(e.deltaY) * videoStore.frameStep
-  let newTime = videoPlayer.value.currentTime + delta
+  // Calculate exact frame step
+  const frameStep = 1 / videoStore.frameRate
+  const scrollDirection = Math.sign(e.deltaY) * -1
+  const newTime = Math.max(0, Math.min(
+    videoStore.currentTime + (scrollDirection * frameStep),
+    videoStore.duration
+  ))
   
-  // Obmedz na rozsah videa
-  newTime = Math.max(0, Math.min(videoStore.duration, newTime))
+  // Update immediately
+  videoPlayer.value.currentTime = newTime
+  videoStore.currentTime = newTime
+  showReplay.value = false
   
-  // Nastav presný frame
-  const exactFrame = Math.round(newTime / videoStore.frameStep)
-  const exactTime = exactFrame * videoStore.frameStep
-  
-  // Okamžitá aktualizácia
-  videoPlayer.value.currentTime = exactTime
-  videoStore.currentTime = exactTime
+  // Restore playback if needed
+  if (wasPlaying) {
+    videoPlayer.value.play()
+    videoStore.setPlaying(true)
+    animationRef.value = requestAnimationFrame(updateFrame)
+  }
 }
 
-// Helpers
 const getFrameRate = () => {
   try {
-    const stream = videoPlayer.value.captureStream()
-    const track = stream.getVideoTracks()[0]
-    return track.getSettings().frameRate || 30
+    if (videoPlayer.value.captureStream) {
+      const stream = videoPlayer.value.captureStream()
+      const track = stream.getVideoTracks()[0]
+      return track.getSettings().frameRate || 30
+    }
+    return 30
   } catch {
     return 30
   }
@@ -224,7 +256,6 @@ const formatTime = (seconds) => {
   return date.toISOString().substr(14, 5)
 }
 
-// Lifecycle
 onMounted(() => {
   initVideo()
   if (videoPlayer.value && videoStore.videoSource) {
@@ -359,6 +390,7 @@ onBeforeUnmount(() => {
 .marker.landing {
   background: #1e90ff;
 }
+
 .timeline-container {
   width: 100%;
   height: 60px;
