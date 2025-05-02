@@ -61,8 +61,7 @@ const handleMenuAction = (menuName, item) => {
     if (item === "Open") {
       fileInput.value[0].click()
     } else if (item === "Close") {
-      // CORRECT: Call clearVideo on the store instance
-      videoStore.clearVideo()
+      videoStore.closeVideo()
     } else if (item === "Exit") {
       // window.close()
     }

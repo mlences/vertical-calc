@@ -1,10 +1,7 @@
 <template>
     <div class="app-container">
-        <MenuPanel @video-source-changed="handleData" />
-        <VideoPlayer :open-video="videoSource" />
-    </div>
-    <div class="file-input-container">
-        {{ videoSource }}
+        <MenuPanel/>
+        <VideoPlayer />
     </div>
 </template>
 
@@ -19,17 +16,6 @@ export default defineComponent({
     components: {
         MenuPanel,
         VideoPlayer
-    },
-    data() {
-        return {
-            videoSource: null, // Premenná pre video source
-        };
-    },
-    methods: {
-        handleData(video) { // Emitovanie eventu s dátami
-            this.videoSource = video
-            console.log(this.videoSource); // Uloženie dát do premennej
-        }
     },
 });
 </script>
